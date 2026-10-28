@@ -1,0 +1,10 @@
+let connection;
+export async function db(){if(connection)return connection;connection=await new Promise((resolve,reject)=>{const r=indexedDB.open('little-paw-diary',1);r.onupgradeneeded=()=>{r.result.createObjectStore('records',{keyPath:'date'});r.result.createObjectStore('drafts');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});return connection;}
+export async function transact(store,mode,action){const database=await db();return new Promise((resolve,reject)=>{const tx=database.transaction(store,mode);const req=action(tx.objectStore(store));let result;req.onsuccess=()=>result=req.result;tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('存储被中断'));});}
+export const allRecords=()=>transact('records','readonly',s=>s.getAll());
+export const putRecord=r=>transact('records','readwrite',s=>s.put(r));
+export const getDraft=()=>transact('drafts','readonly',s=>s.get('active'));
+export const putDraft=d=>transact('drafts','readwrite',s=>s.put(d,'active'));
+export const clearDraft=()=>transact('drafts','readwrite',s=>s.delete('active'));
+export async function resetExamples(){const database=await db();return new Promise((resolve,reject)=>{const tx=database.transaction('records','readwrite');const s=tx.objectStore('records');const r=s.openCursor();r.onsuccess=()=>{const c=r.result;if(c){if(c.value.demo)c.delete();c.continue();}};tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}
+export async function compress(file){if(!file.type.startsWith('image/'))throw Error('请选择图片文件（JPG、PNG、WebP 等）');if(file.size>35*1024*1024)throw Error('单张照片请小于 35 MB，原照片未改动');const bitmap=await createImageBitmap(file);try{const ratio=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=Math.round(bitmap.width*ratio);canvas.height=Math.round(bitmap.height*ratio);canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);return await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('图片处理失败，请重选')),'image/jpeg',0.86));}finally{bitmap.close();}}
